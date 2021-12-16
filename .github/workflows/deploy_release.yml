@@ -1,0 +1,48 @@
+name: Deploy release tags to test environment
+# This only deploy release to none production environments
+# Production will be pushed to config repository on release and a merge request is needed in release repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        type: string
+        required: true
+      deploy_to_env:
+        type: choice
+        description: Deploy to environment
+        options:
+        - alpha
+        - sandbox
+        - pa1
+        - qa
+        - qa-1
+        - qa-2
+        - qa-3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: mukunku/tag-exists-action@f8003af57c02ede2638326be67523df10cf6b10a
+      id: checkTag
+      with:
+        tag: "${{github.event.inputs.release_tag}}"
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Check release tag
+      if: contains(steps.checkTag.outputs.exists, 'true') == false
+      uses: actions/github-script@v3
+      with:
+        script: |
+            core.setFailed('Release tag does not exist!')
+
+    - name: Repository Dispatch
+      uses: peter-evans/repository-dispatch@ce5485de42c9b2622d2ed064be479e8ed65e76f4
+      with:
+        token: ${{ secrets.BILLODEPLOY_PAT_TOKEN }}
+        repository: ${{github.repository}}-config
+        event-type: gitops-deploy-helm
+        client-payload: '{"image_tag": "${{ github.event.inputs.release_tag }}", "env": "${{ github.event.inputs.deploy_to_env }}", "author": "${{ github.actor }}", "full_deploy": "true"}'
